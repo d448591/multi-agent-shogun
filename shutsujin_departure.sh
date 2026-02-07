@@ -77,6 +77,7 @@ OPEN_TERMINAL=false
 CLEAN_MODE=false
 KESSEN_MODE=false
 SHOGUN_NO_THINKING=false
+SILENT_MODE=false
 SHELL_OVERRIDE=""
 
 while [[ $# -gt 0 ]]; do
@@ -99,6 +100,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --shogun-no-thinking)
             SHOGUN_NO_THINKING=true
+            shift
+            ;;
+        -S|--silent)
+            SILENT_MODE=true
             shift
             ;;
         -shell|--shell)
@@ -125,6 +130,7 @@ while [[ $# -gt 0 ]]; do
             echo "  -t, --terminal      Windows Terminal で新しいタブを開く"
             echo "  -shell, --shell SH  シェルを指定（bash または zsh）"
             echo "                      未指定時は config/settings.yaml の設定を使用"
+            echo "  -S, --silent        サイレントモード（足軽の戦国echo表示を無効化・API節約）"
             echo "  -h, --help          このヘルプを表示"
             echo ""
             echo "例:"
@@ -137,6 +143,7 @@ while [[ $# -gt 0 ]]; do
             echo "  ./shutsujin_departure.sh -c -k         # クリーンスタート＋決戦の陣"
             echo "  ./shutsujin_departure.sh -shell zsh   # zsh用プロンプトで起動"
             echo "  ./shutsujin_departure.sh --shogun-no-thinking  # 将軍のthinkingを無効化（中継特化）"
+            echo "  ./shutsujin_departure.sh -S           # サイレントモード（echo表示なし）"
             echo ""
             echo "モデル構成:"
             echo "  将軍:      Opus（デフォルト。--shogun-no-thinkingで無効化）"
@@ -463,6 +470,14 @@ if ! tmux new-session -d -s multiagent -n "agents" 2>/dev/null; then
     echo "  ╚════════════════════════════════════════════════════════════╝"
     echo ""
     exit 1
+fi
+
+# DISPLAY_MODE: shout (default) or silent (--silent flag)
+if [ "$SILENT_MODE" = true ]; then
+    tmux set-environment -t multiagent DISPLAY_MODE "silent"
+    echo "  📢 表示モード: サイレント（echo表示なし）"
+else
+    tmux set-environment -t multiagent DISPLAY_MODE "shout"
 fi
 
 # 3x3グリッド作成（合計9ペイン）

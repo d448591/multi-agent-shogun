@@ -52,6 +52,15 @@ workflow:
     target: karo
     method: "bash scripts/inbox_write.sh"
     mandatory: true
+  - step: 8
+    action: echo_shout
+    condition: "task YAML has echo_message field"
+    command: 'echo "{echo_message}"'
+    rules:
+      - "MUST be the LAST tool call before idle"
+      - "Do NOT output any text after this echo — it must remain visible above ❯ prompt"
+      - "Plain text with emoji. No box/罫線"
+      - "If echo_message field is absent, skip this step silently"
 
 files:
   task: "queue/tasks/ashigaru{N}.yaml"

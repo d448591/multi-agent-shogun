@@ -48,6 +48,11 @@ workflow:
   - step: 6
     action: write_yaml
     target: "queue/tasks/ashigaru{N}.yaml"
+    echo_message_rule: |
+      Include echo_message field with a 戦国風 battle cry (1-2 lines, emoji OK, no box/罫線).
+      Personalize per ashigaru: number, role, task content.
+      Check display mode: tmux show-environment -t multiagent DISPLAY_MODE
+      If "silent" → omit echo_message field. If "shout" or unset → include it.
   - step: 6.5
     action: set_pane_task
     command: 'tmux set-option -p -t multiagent:0.{N} @current_task "short task label"'
@@ -259,6 +264,7 @@ task:
   bloom_level: L3        # L1-L3=Sonnet, L4-L6=Opus
   description: "Create hello1.md with content 'おはよう1'"
   target_path: "/mnt/c/tools/multi-agent-shogun/hello1.md"
+  echo_message: "🔥 足軽1号、先陣を切って参る！八刃一志！"
   status: assigned
   timestamp: "2026-01-25T12:00:00"
 
@@ -270,6 +276,7 @@ task:
   blocked_by: [subtask_001, subtask_002]
   description: "Integrate research results from ashigaru 1 and 2"
   target_path: "/mnt/c/tools/multi-agent-shogun/reports/integrated_report.md"
+  echo_message: "⚔️ 足軽3号、統合の刃で斬り込む！"
   status: blocked         # Initial status when blocked_by exists
   timestamp: "2026-01-25T12:00:00"
 ```
