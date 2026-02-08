@@ -99,7 +99,6 @@ PANE_TARGET="test:0.0"
 CLI_TYPE="claude"
 INBOX="$TEST_INBOX_DIR/test_agent.yaml"
 LOCKFILE="\${INBOX}.lock"
-SEND_KEYS_TIMEOUT=5
 SCRIPT_DIR="$PROJECT_ROOT"
 
 # Override commands with mocks
@@ -139,14 +138,22 @@ send_wakeup() {
     return 1
 }
 
-# send_cli_command (unchanged — still uses send-keys for /clear, /model)
+# send_cli_command — pty direct write (send-keys完全廃止)
 send_cli_command() {
     local cmd="\$1"
+
+    local pty
+    pty=\$(tmux display-message -t "\$PANE_TARGET" -p '#{pane_tty}' 2>/dev/null)
+
+    if [ -z "\$pty" ] || [ ! -w "\$pty" ]; then
+        echo "[WARN] pty not available for CLI command" >&2
+        return 1
+    fi
+
     local actual_cmd="\$cmd"
-    echo "[CLI] Sending CLI command: \$actual_cmd" >&2
-    timeout "\$SEND_KEYS_TIMEOUT" tmux send-keys -t "\$PANE_TARGET" "\$actual_cmd" 2>/dev/null || return 1
-    sleep 0.1
-    timeout "\$SEND_KEYS_TIMEOUT" tmux send-keys -t "\$PANE_TARGET" Enter 2>/dev/null || return 1
+    echo "[PTY] Sending CLI command: \$actual_cmd via \$pty" >&2
+    printf '%s\n' "\$actual_cmd" > "\$pty"
+    echo "PTY_CLI:\$actual_cmd" >> "$PTY_LOG"
     return 0
 }
 HARNESS
@@ -249,26 +256,30 @@ MOCK
     [ "$status" -eq 1 ]
 }
 
-# --- T-SW-008: /clear still uses send-keys ---
+# --- T-SW-008: /clear uses pty direct write (no send-keys) ---
 
-@test "T-SW-008: send_cli_command /clear still uses send-keys (kept)" {
+@test "T-SW-008: send_cli_command /clear uses pty direct write" {
     run bash -c "source '$TEST_HARNESS' && send_cli_command /clear"
     [ "$status" -eq 0 ]
 
-    grep -q "send-keys -t test:0.0 /clear" "$MOCK_LOG"
-    grep -q "send-keys -t test:0.0 Enter" "$MOCK_LOG"
+    # Verify pty write occurred
+    grep -q "PTY_CLI:/clear" "$PTY_LOG"
 
-    ! grep -q "paste-buffer" "$MOCK_LOG"
+    # Verify NO send-keys used
+    ! grep -q "send-keys" "$MOCK_LOG"
+
+    # Verify /clear was written to fake pty
+    grep -q "/clear" "$FAKE_PTY"
 }
 
-# --- T-SW-009: /model still uses send-keys ---
+# --- T-SW-009: /model uses pty direct write (no send-keys) ---
 
-@test "T-SW-009: send_cli_command /model still uses send-keys (kept)" {
+@test "T-SW-009: send_cli_command /model uses pty direct write" {
     run bash -c "source '$TEST_HARNESS' && send_cli_command '/model opus'"
     [ "$status" -eq 0 ]
 
-    grep -q "send-keys -t test:0.0 /model opus" "$MOCK_LOG"
-    ! grep -q "paste-buffer" "$MOCK_LOG"
+    grep -q "PTY_CLI:/model opus" "$PTY_LOG"
+    ! grep -q "send-keys" "$MOCK_LOG"
 }
 
 # --- T-SW-010: nudge content format ---
@@ -282,9 +293,16 @@ MOCK
 
 # --- T-SW-011: backward compat — functions exist ---
 
-@test "T-SW-011: inbox_watcher.sh contains send_wakeup and agent_has_self_watch functions" {
+@test "T-SW-011: inbox_watcher.sh uses pty direct write, no send-keys in executable code" {
     grep -q "send_wakeup()" "$WATCHER_SCRIPT"
     grep -q "agent_has_self_watch" "$WATCHER_SCRIPT"
-    # pty direct write should be present
     grep -q "pane_tty" "$WATCHER_SCRIPT"
+
+    # No send-keys in executable code (only in comments)
+    # Strip comments, then check
+    local executable_lines
+    executable_lines=$(grep -v '^\s*#' "$WATCHER_SCRIPT")
+    ! echo "$executable_lines" | grep -q "send-keys"
+    ! echo "$executable_lines" | grep -q "paste-buffer"
+    ! echo "$executable_lines" | grep -q "set-buffer"
 }

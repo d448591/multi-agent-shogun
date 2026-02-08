@@ -35,9 +35,9 @@ The nudge is minimal: `inboxN` (e.g. `inbox3` = 3 unread). That's it.
 **Agent reads the inbox file itself.** Message content never travels through tmux — only a short wake-up signal.
 **send-keys is NOT used for nudge delivery.** Nudge goes directly to the pty device.
 
-Special cases (CLI commands sent directly via send-keys):
-- `type: clear_command` → sends `/clear` + Enter + content
-- `type: model_switch` → sends the /model command directly
+Special cases (CLI commands sent via pty direct write):
+- `type: clear_command` → writes `/clear` + newline to pty, then follow-up content
+- `type: model_switch` → writes the /model command to pty
 
 ## Inbox Processing Protocol (karo/ashigaru)
 

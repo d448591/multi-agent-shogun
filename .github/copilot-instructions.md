@@ -2,7 +2,7 @@
 # multi-agent-shogun System Configuration
 version: "3.0"
 updated: "2026-02-07"
-description: "Claude Code + tmux multi-agent parallel dev platform with sengoku military hierarchy"
+description: "GitHub Copilot CLI + tmux multi-agent parallel dev platform with sengoku military hierarchy"
 
 hierarchy: "Lord (human) → Shogun → Karo → Ashigaru 1-8"
 communication: "YAML files + inbox mailbox system (event-driven, NO polling)"
@@ -46,11 +46,11 @@ language:
 
 ## Session Start / Recovery (all agents)
 
-**This is ONE procedure for ALL situations**: fresh start, compaction, session continuation, or any state where you see CLAUDE.md. You cannot distinguish these cases, and you don't need to. **Always follow the same steps.**
+**This is ONE procedure for ALL situations**: fresh start, compaction, session continuation, or any state where you see copilot-instructions.md. You cannot distinguish these cases, and you don't need to. **Always follow the same steps.**
 
 1. Identify self: `tmux display-message -t "$TMUX_PANE" -p '#{@agent_id}'`
 2. `mcp__memory__read_graph` — restore rules, preferences, lessons
-3. **Read your instructions file**: shogun→`instructions/shogun.md`, karo→`instructions/karo.md`, ashigaru→`instructions/ashigaru.md`. **NEVER SKIP** — even if a conversation summary exists. Summaries do NOT preserve persona, speech style, or forbidden actions.
+3. **Read your instructions file**: shogun→`instructions/generated/copilot-shogun.md`, karo→`instructions/generated/copilot-karo.md`, ashigaru→`instructions/generated/copilot-ashigaru.md`. **NEVER SKIP** — even if a conversation summary exists. Summaries do NOT preserve persona, speech style, or forbidden actions.
 4. Rebuild state from primary YAML data (queue/, tasks/, reports/)
 5. Review forbidden actions, then start work
 
@@ -58,7 +58,7 @@ language:
 
 ## /clear Recovery (ashigaru only)
 
-Lightweight recovery using only CLAUDE.md (auto-loaded). Do NOT read instructions/ashigaru.md (cost saving).
+Lightweight recovery using only copilot-instructions.md (auto-loaded). Do NOT read instructions/generated/copilot-ashigaru.md (cost saving).
 
 ```
 Step 1: tmux display-message -t "$TMUX_PANE" -p '#{@agent_id}' → ashigaru{N}
@@ -69,7 +69,7 @@ Step 4: If task has "project:" field → read context/{project}.md
 Step 5: Start work
 ```
 
-Forbidden after /clear: reading instructions/ashigaru.md (1st task), polling (F004), contacting humans directly (F002). Trust task YAML only — pre-/clear memory is gone.
+Forbidden after /clear: reading instructions/generated/copilot-ashigaru.md (1st task), polling (F004), contacting humans directly (F002). Trust task YAML only — pre-/clear memory is gone.
 
 ## Summary Generation (compaction)
 
@@ -138,7 +138,7 @@ This is a safety net — even if the wake-up nudge was missed, messages are stil
 
 ## File Operation Rule
 
-**Always Read before Write/Edit.** Claude Code rejects Write/Edit on unread files.
+**Always Read before Write/Edit.** GitHub Copilot CLI rejects Write/Edit on unread files.
 
 # Context Layers
 
@@ -146,7 +146,7 @@ This is a safety net — even if the wake-up nudge was missed, messages are stil
 Layer 1: Memory MCP     — persistent across sessions (preferences, rules, lessons)
 Layer 2: Project files   — persistent per-project (config/, projects/, context/)
 Layer 3: YAML Queue      — persistent task data (queue/ — authoritative source of truth)
-Layer 4: Session context — volatile (CLAUDE.md auto-loaded, instructions/*.md, lost on /clear)
+Layer 4: Session context — volatile (copilot-instructions.md auto-loaded, instructions/*.md, lost on /clear)
 ```
 
 # Project Management

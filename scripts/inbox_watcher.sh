@@ -24,7 +24,7 @@ CLI_TYPE="${3:-claude}"  # CLI種別（claude/codex/copilot）。未指定→cla
 
 INBOX="$SCRIPT_DIR/queue/inbox/${AGENT_ID}.yaml"
 LOCKFILE="${INBOX}.lock"
-SEND_KEYS_TIMEOUT=5  # seconds — prevents hang (PID 274337 incident)
+
 
 if [ -z "$AGENT_ID" ] || [ -z "$PANE_TARGET" ]; then
     echo "Usage: inbox_watcher.sh <agent_id> <pane_target> [cli_type]" >&2
@@ -57,7 +57,7 @@ try:
         print(json.dumps({'count': 0, 'specials': []}))
         sys.exit(0)
     unread = [m for m in data['messages'] if not m.get('read', False)]
-    # Special types that need direct send-keys (CLI commands, not conversation)
+    # Special types that need direct pty write (CLI commands, not conversation)
     special_types = ('clear_command', 'model_switch')
     specials = [m for m in unread if m.get('type') in special_types]
     # Mark specials as read immediately (they'll be delivered directly)
@@ -78,12 +78,22 @@ except Exception as e:
 " 2>/dev/null
 }
 
-# ─── Send CLI command directly via send-keys ───
+# ─── Send CLI command via pty direct write ───
 # For /clear and /model only. These are CLI commands, not conversation messages.
 # CLI_TYPE別分岐: claude→そのまま, codex→/clear対応・/modelスキップ,
 #                  copilot→Ctrl-C+再起動・/modelスキップ
+# 全CLIでpty直接書き込み。send-keys完全不使用。
 send_cli_command() {
     local cmd="$1"
+
+    # Get pty device for the target pane
+    local pty
+    pty=$(tmux display-message -t "$PANE_TARGET" -p '#{pane_tty}' 2>/dev/null)
+
+    if [ -z "$pty" ] || [ ! -w "$pty" ]; then
+        echo "[$(date)] WARNING: pty not available or not writable ($pty) for CLI command" >&2
+        return 1
+    fi
 
     # CLI別コマンド変換
     local actual_cmd="$cmd"
@@ -98,12 +108,10 @@ send_cli_command() {
         copilot)
             # Copilot: /clearはCtrl-C+再起動, /model非対応→スキップ
             if [[ "$cmd" == "/clear" ]]; then
-                echo "[$(date)] Copilot /clear: sending Ctrl-C + restart" >&2
-                timeout "$SEND_KEYS_TIMEOUT" tmux send-keys -t "$PANE_TARGET" C-c 2>/dev/null || true
+                echo "[$(date)] [PTY] Copilot /clear: sending Ctrl-C + restart via pty ($pty)" >&2
+                printf '\x03' > "$pty"
                 sleep 2
-                timeout "$SEND_KEYS_TIMEOUT" tmux send-keys -t "$PANE_TARGET" "copilot --yolo" 2>/dev/null || true
-                sleep 0.3
-                timeout "$SEND_KEYS_TIMEOUT" tmux send-keys -t "$PANE_TARGET" Enter 2>/dev/null || true
+                printf '%s\n' "copilot --yolo" > "$pty"
                 sleep 3
                 return 0
             fi
@@ -115,17 +123,8 @@ send_cli_command() {
         # claude: commands pass through as-is
     esac
 
-    echo "[$(date)] Sending CLI command to $AGENT_ID ($CLI_TYPE): $actual_cmd" >&2
-
-    if ! timeout "$SEND_KEYS_TIMEOUT" tmux send-keys -t "$PANE_TARGET" "$actual_cmd" 2>/dev/null; then
-        echo "[$(date)] WARNING: send-keys timed out for CLI command" >&2
-        return 1
-    fi
-    sleep 0.3
-    if ! timeout "$SEND_KEYS_TIMEOUT" tmux send-keys -t "$PANE_TARGET" Enter 2>/dev/null; then
-        echo "[$(date)] WARNING: send-keys Enter timed out for CLI command" >&2
-        return 1
-    fi
+    echo "[$(date)] [PTY] Sending CLI command to $AGENT_ID ($CLI_TYPE) via pty ($pty): $actual_cmd" >&2
+    printf '%s\n' "$actual_cmd" > "$pty"
 
     # /clear needs extra wait time before follow-up
     if [[ "$actual_cmd" == "/clear" ]]; then
