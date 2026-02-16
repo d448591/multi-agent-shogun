@@ -1,0 +1,114 @@
+# multi-agent-shogun 設定ファイル
+
+# 言語設定
+# ja: 日本語（戦国風日本語のみ、併記なし）
+# en: 英語（戦国風日本語 + 英訳併記）
+# その他の言語コード（es, zh, ko, fr, de 等）も対応
+language: ja
+
+# シェル設定
+# bash: bash用プロンプト（デフォルト）
+# zsh: zsh用プロンプト
+shell: bash
+
+# スキル設定
+skill:
+  # スキル保存先（スキル名に shogun- プレフィックスを付けて保存）
+  save_path: "~/.claude/skills/"
+
+  # ローカルスキル保存先（このプロジェクト専用）
+  local_path: "/work/multi-agent-shogun/skills/"
+
+# ログ設定
+logging:
+  level: info  # debug | info | warn | error
+  path: "/work/multi-agent-shogun/logs/"
+
+# 納品物出力先設定
+# 足軽が生成する納品物（ドキュメント、レポート等）のデフォルト出力先ディレクトリ
+# 家老がタスク分解時に target_path を組み立てる際に参照する
+#
+# default: 全プロジェクト共通のデフォルト出力先
+# projects.<project_id>: プロジェクト別の出力先（defaultより優先）
+output:
+  default: "/work/multi-agent-shogun/output"
+  # projects:
+  #   sample_project: "/path/to/project/deliverables"
+  #   another_project: "/mnt/c/work/reports"
+
+# CLI Adapter 設定（各エージェントが使用する CLI を指定）
+# 例: default: copilot で全エージェントを Copilot CLI に切り替える
+#
+# エージェント個別設定:
+#   agents.<agent_id>.type  — CLI種別 (claude|codex|copilot|kimi)
+#   agents.<agent_id>.model — 使用モデル (短縮名 or 正式名)
+#
+# モデル短縮名マッピング（Copilot CLI用）:
+#   opus → claude-opus-4.6, sonnet → claude-sonnet-4, haiku → claude-haiku-4.5
+#   gpt-5 → gpt-5, gemini → gemini-3-pro-preview
+#   正式名（claude-opus-4.6, gpt-5.2-codex 等）はそのまま使用可能
+cli:
+  default: copilot
+  agents:
+    shogun:
+      type: copilot
+      model: sonnet
+    karo:
+      type: copilot
+      model: sonnet
+    ashigaru1:
+      type: copilot
+      model: haiku
+    ashigaru2:
+      type: copilot
+      model: haiku
+    ashigaru3:
+      type: copilot
+      model: haiku
+    ashigaru4:
+      type: copilot
+      model: haiku
+    ashigaru5:
+      type: copilot
+      model: haiku
+    ashigaru6:
+      type: copilot
+      model: haiku
+    ashigaru7:
+      type: copilot
+      model: haiku
+    gunshi:
+      type: copilot
+      model: opus
+
+  # agents:
+  #   shogun:
+  #     type: copilot
+  #     model: opus
+  #   karo:
+  #     type: copilot
+  #     model: sonnet
+  #   ashigaru1:
+  #     type: copilot
+  #     model: sonnet
+  #   ashigaru2:
+  #     type: copilot
+  #     model: sonnet
+  #   ashigaru3:
+  #     type: copilot
+  #     model: sonnet
+  #   ashigaru4:
+  #     type: copilot
+  #     model: sonnet
+  #   ashigaru5:
+  #     type: copilot
+  #     model: sonnet
+  #   ashigaru6:
+  #     type: copilot
+  #     model: sonnet
+  #   ashigaru7:
+  #     type: copilot
+  #     model: sonnet
+  #   gunshi:
+  #     type: copilot
+  #     model: opus

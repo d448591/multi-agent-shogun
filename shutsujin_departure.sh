@@ -697,8 +697,10 @@ if [ "$SETUP_ONLY" = false ]; then
         _karo_cmd=$(build_cli_command "karo")
     fi
     # Codex等の初期プロンプト付加（サジェストUI停止問題対策）
+    # Note: Copilot CLIはプロンプトをCLI引数として受け付けないため、
+    # 起動後に別途send-keysで送信する（STEP 6.5.1）
     _startup_prompt=$(get_startup_prompt "karo" 2>/dev/null)
-    if [[ -n "$_startup_prompt" ]]; then
+    if [[ -n "$_startup_prompt" ]] && [[ "$_karo_cli_type" != "copilot" ]]; then
         _karo_cmd="$_karo_cmd \"$_startup_prompt\""
     fi
     tmux set-option -p -t "multiagent:agents.${p}" @agent_cli "$_karo_cli_type"
@@ -722,7 +724,7 @@ if [ "$SETUP_ONLY" = false ]; then
             fi
             # Codex等の初期プロンプト付加（サジェストUI停止問題対策）
             _startup_prompt=$(get_startup_prompt "ashigaru${i}" 2>/dev/null)
-            if [[ -n "$_startup_prompt" ]]; then
+            if [[ -n "$_startup_prompt" ]] && [[ "$_ashi_cli_type" != "copilot" ]]; then
                 _ashi_cmd="$_ashi_cmd \"$_startup_prompt\""
             fi
             tmux set-option -p -t "multiagent:agents.${p}" @agent_cli "$_ashi_cli_type"
@@ -742,7 +744,7 @@ if [ "$SETUP_ONLY" = false ]; then
             fi
             # Codex等の初期プロンプト付加（サジェストUI停止問題対策）
             _startup_prompt=$(get_startup_prompt "ashigaru${i}" 2>/dev/null)
-            if [[ -n "$_startup_prompt" ]]; then
+            if [[ -n "$_startup_prompt" ]] && [[ "$_ashi_cli_type" != "copilot" ]]; then
                 _ashi_cmd="$_ashi_cmd \"$_startup_prompt\""
             fi
             tmux set-option -p -t "multiagent:agents.${p}" @agent_cli "$_ashi_cli_type"
@@ -762,7 +764,7 @@ if [ "$SETUP_ONLY" = false ]; then
     fi
     # Codex等の初期プロンプト付加（サジェストUI停止問題対策）
     _startup_prompt=$(get_startup_prompt "gunshi" 2>/dev/null)
-    if [[ -n "$_startup_prompt" ]]; then
+    if [[ -n "$_startup_prompt" ]] && [[ "$_gunshi_cli_type" != "copilot" ]]; then
         _gunshi_cmd="$_gunshi_cmd \"$_startup_prompt\""
     fi
     tmux set-option -p -t "multiagent:agents.${p}" @agent_cli "$_gunshi_cli_type"
@@ -848,16 +850,67 @@ NINJA_EOF
     echo -e "                               \033[0;36m[ASCII Art: syntax-samurai/ryu - CC0 1.0 Public Domain]\033[0m"
     echo ""
 
-    echo "  Claude Code の起動を待機中（最大30秒）..."
+    echo "  CLI の起動を待機中（最大30秒）..."
 
     # 将軍の起動を確認（最大30秒待機）
+    # Claude: "bypass permissions" を探す
+    # Copilot: TUIの起動完了を待つ（一般的なパターン）
+    _shogun_cli_type_check="claude"
+    if [ "$CLI_ADAPTER_LOADED" = true ]; then
+        _shogun_cli_type_check=$(get_cli_type "shogun")
+    fi
     for i in {1..30}; do
-        if tmux capture-pane -t shogun:main -p | grep -q "bypass permissions"; then
-            echo "  └─ 将軍の Claude Code 起動確認完了（${i}秒）"
-            break
+        if [ "$_shogun_cli_type_check" = "copilot" ]; then
+            # Copilot TUI: capture-pane で入力プロンプトが出ていれば起動完了
+            if tmux capture-pane -t shogun:main -p 2>/dev/null | grep -qE '(>|copilot)'; then
+                echo "  └─ 将軍の Copilot CLI 起動確認完了（${i}秒）"
+                break
+            fi
+        else
+            if tmux capture-pane -t shogun:main -p | grep -q "bypass permissions"; then
+                echo "  └─ 将軍の Claude Code 起動確認完了（${i}秒）"
+                break
+            fi
         fi
         sleep 1
     done
+
+    # ═══════════════════════════════════════════════════════════════════
+    # STEP 6.5.1: Copilotエージェントに初期プロンプト送信
+    # ═══════════════════════════════════════════════════════════════════
+    # Copilot CLIはプロンプトをCLI引数として受け付けないため、
+    # TUI起動後にsend-keysで送信する
+    if [ "$CLI_ADAPTER_LOADED" = true ]; then
+        _copilot_agents_prompted=0
+        for _agent_id in shogun karo ashigaru{1..7} gunshi; do
+            _agent_cli=$(get_cli_type "$_agent_id")
+            if [ "$_agent_cli" = "copilot" ]; then
+                _sp=$(get_startup_prompt "$_agent_id" 2>/dev/null)
+                if [[ -n "$_sp" ]]; then
+                    # Determine pane target
+                    case "$_agent_id" in
+                        shogun) _pane_target="shogun:main" ;;
+                        karo)   _pane_target="multiagent:agents.${PANE_BASE}" ;;
+                        gunshi) _pane_target="multiagent:agents.$((PANE_BASE+8))" ;;
+                        ashigaru[1-7])
+                            _ashi_num="${_agent_id#ashigaru}"
+                            _pane_target="multiagent:agents.$((PANE_BASE+_ashi_num))"
+                            ;;
+                        *) continue ;;
+                    esac
+                    # Wait briefly for TUI to initialize, then send prompt
+                    sleep 2
+                    tmux send-keys -t "$_pane_target" "$_sp" 2>/dev/null || true
+                    sleep 0.3
+                    tmux send-keys -t "$_pane_target" Enter 2>/dev/null || true
+                    _copilot_agents_prompted=$((_copilot_agents_prompted+1))
+                fi
+            fi
+        done
+        if [ "$_copilot_agents_prompted" -gt 0 ]; then
+            log_info "  └─ Copilotエージェント${_copilot_agents_prompted}体に初期プロンプト送信完了"
+        fi
+    fi
 
     # ═══════════════════════════════════════════════════════════════════
     # STEP 6.6: inbox_watcher起動（全エージェント）

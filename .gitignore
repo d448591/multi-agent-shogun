@@ -151,3 +151,10 @@
 !.github/
 !.github/workflows/
 !.github/workflows/*.yml
+
+# Copilot 対応
+!config/settings.yaml-sample
+!copilot-compatible.md
+!copilot-setting-agent.md
+!copilot-output-dir.md
+!output/.gitkeep

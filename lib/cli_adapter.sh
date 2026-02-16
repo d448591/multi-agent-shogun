@@ -8,7 +8,9 @@
 #   get_instruction_file(agent_id [,cli_type]) → 指示書パス
 #   validate_cli_availability(cli_type)     → 0=OK, 1=NG
 #   get_agent_model(agent_id)               → "opus" | "sonnet" | "haiku" | "k2.5"
+#   get_copilot_model_name(internal_name)    → "claude-opus-4.6" | "claude-sonnet-4" | ...
 #   get_startup_prompt(agent_id)            → 初期プロンプト文字列 or ""
+#   get_output_dir([project_id])            → 納品物出力先ディレクトリパス
 
 # プロジェクトルートを基準にsettings.yamlのパスを解決
 CLI_ADAPTER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -147,7 +149,15 @@ build_cli_command() {
             echo "$cmd"
             ;;
         copilot)
-            echo "copilot --yolo"
+            local cmd="copilot --yolo"
+            if [[ -n "$model" ]]; then
+                local copilot_model
+                copilot_model=$(get_copilot_model_name "$model")
+                if [[ -n "$copilot_model" ]]; then
+                    cmd="$cmd --model $copilot_model"
+                fi
+            fi
+            echo "$cmd"
             ;;
         kimi)
             local cmd="kimi --yolo"
@@ -183,7 +193,7 @@ get_instruction_file() {
     case "$cli_type" in
         claude)  echo "instructions/${role}.md" ;;
         codex)   echo "instructions/codex-${role}.md" ;;
-        copilot) echo ".github/copilot-instructions-${role}.md" ;;
+        copilot) echo "instructions/generated/copilot-${role}.md" ;;
         kimi)    echo "instructions/generated/kimi-${role}.md" ;;
         *)       echo "instructions/${role}.md" ;;
     esac
@@ -227,6 +237,31 @@ validate_cli_availability() {
     return 0
 }
 
+# get_copilot_model_name(internal_name)
+# 内部モデル名をCopilot CLIのモデル識別子に変換する
+# Copilot CLI --model は正式名（claude-sonnet-4, gpt-5 等）を要求するため
+# 短縮名（opus, sonnet, haiku 等）からマッピングする
+# 正式名がそのまま渡された場合はパススルーする
+get_copilot_model_name() {
+    local name="$1"
+    case "$name" in
+        # 短縮名 → Copilot CLI正式名
+        opus)           echo "claude-opus-4.6" ;;
+        opus-fast)      echo "claude-opus-4.6-fast" ;;
+        sonnet)         echo "claude-sonnet-4.5" ;;
+        haiku)          echo "claude-haiku-4.5" ;;
+        gpt-5)          echo "gpt-5" ;;
+        gpt-5-mini)     echo "gpt-5-mini" ;;
+        gemini)         echo "gemini-3-pro-preview" ;;
+        # 正式名パススルー（claude-opus-4.6, gpt-5.2-codex 等）
+        claude-*|gpt-*|gemini-*)
+            echo "$name" ;;
+        # 不明な名前 → 空（デフォルト使用）
+        *)
+            echo "" ;;
+    esac
+}
+
 # get_agent_model(agent_id)
 # エージェントが使用すべきモデル名を返す
 get_agent_model() {
@@ -263,8 +298,18 @@ get_agent_model() {
                 *)              echo "k2.5" ;;
             esac
             ;;
+        copilot)
+            # Copilot CLI用デフォルトモデル
+            case "$agent_id" in
+                shogun)         echo "opus" ;;
+                karo)           echo "sonnet" ;;
+                gunshi)         echo "opus" ;;
+                ashigaru*)      echo "sonnet" ;;
+                *)              echo "sonnet" ;;
+            esac
+            ;;
         *)
-            # Claude Code/Codex/Copilot用デフォルトモデル
+            # Claude Code/Codex用デフォルトモデル
             case "$agent_id" in
                 shogun)         echo "opus" ;;
                 karo)           echo "sonnet" ;;
@@ -290,8 +335,39 @@ get_startup_prompt() {
         codex)
             echo "Session Start — do ALL of this in one turn, do NOT stop early: 1) tmux display-message -t \"\$TMUX_PANE\" -p '#{@agent_id}' to identify yourself. 2) Read queue/tasks/${agent_id}.yaml. 3) Read queue/inbox/${agent_id}.yaml, mark read:true. 4) Read files listed in context_files. 5) Execute the assigned task to completion — edit files, run commands, write reports. Keep working until the task is done."
             ;;
+        copilot)
+            echo "Session Start — do ALL of this in one turn, do NOT stop early: 1) Run: tmux display-message -t \"\$TMUX_PANE\" -p '#{@agent_id}' to identify yourself. 2) Read your instruction file at instructions/generated/copilot-{your_role}.md (role = shogun/karo/ashigaru/gunshi based on step 1). 3) Read queue/tasks/${agent_id}.yaml for your current task. 4) Read queue/inbox/${agent_id}.yaml, process unread entries and mark read:true. 5) Execute the assigned task to completion. Keep working until done."
+            ;;
         *)
             echo ""
             ;;
     esac
+}
+
+# get_output_dir([project_id])
+# 納品物のデフォルト出力先ディレクトリを返す
+# 優先順位: output.projects.<project_id> → output.default → saytask/
+get_output_dir() {
+    local project_id="${1:-}"
+
+    # プロジェクト別設定を確認
+    if [[ -n "$project_id" ]]; then
+        local project_dir
+        project_dir=$(_cli_adapter_read_yaml "output.projects.${project_id}" "")
+        if [[ -n "$project_dir" ]]; then
+            echo "$project_dir"
+            return 0
+        fi
+    fi
+
+    # デフォルト出力先
+    local default_dir
+    default_dir=$(_cli_adapter_read_yaml "output.default" "")
+    if [[ -n "$default_dir" ]]; then
+        echo "$default_dir"
+        return 0
+    fi
+
+    # フォールバック: saytask/
+    echo "${CLI_ADAPTER_PROJECT_ROOT}/saytask"
 }

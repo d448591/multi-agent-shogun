@@ -34,6 +34,11 @@ agent_is_busy_check() {
     if echo "$pane_tail" | grep -qE '^(❯|›)\s*$'; then
         return 1
     fi
+    # Copilot CLI idle prompt (input ready)
+    # Copilot TUI shows ">" or "copilot>" when waiting for input
+    if echo "$pane_tail" | grep -qE '(^>\s*$|copilot\s*>\s*$)'; then
+        return 1
+    fi
 
     # ── Busy markers (bottom 5 lines only) ──
     if echo "$pane_tail" | grep -qiF 'esc to interrupt'; then
@@ -43,6 +48,10 @@ agent_is_busy_check() {
         return 0
     fi
     if echo "$pane_tail" | grep -qiE '(Working|Thinking|Planning|Sending|task is in progress|Compacting conversation|thought for|思考中|考え中|計画中|送信中|処理中|実行中)'; then
+        return 0
+    fi
+    # Copilot CLI busy markers
+    if echo "$pane_tail" | grep -qiE '(Running|Calling|Searching|Reading|Editing|Creating|Analyzing)'; then
         return 0
     fi
 

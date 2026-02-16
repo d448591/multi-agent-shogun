@@ -314,11 +314,11 @@ MOCK
     ! grep -q "send-keys.*Escape" "$MOCK_LOG"
 }
 
-# --- T-ESC-003: unread 2-4min → Escape+nudge ---
+# --- T-ESC-003: Phase 2 Escape suppressed for copilot (plain nudge fallback) ---
 
-@test "T-ESC-003: escalation Phase 2 — unread 2-4min uses Escape+nudge (copilot)" {
-    # Escape escalation is suppressed for claude/codex (Stop hook / safety).
-    # Test with copilot CLI which still uses Escape escalation.
+@test "T-ESC-003: escalation Phase 2 — copilot suppresses Escape, sends plain nudge" {
+    # All known CLI types (claude/codex/copilot) suppress Escape escalation.
+    # Verify copilot sends plain nudge instead of Escape.
     export MOCK_PANE_CLI="copilot"
     run bash -c '
         source "'"$TEST_HARNESS"'"
@@ -327,14 +327,14 @@ MOCK
         age=$((now - FIRST_UNREAD_SEEN))
         if [ "$age" -ge "$ESCALATE_PHASE1" ] && [ "$age" -lt "$ESCALATE_PHASE2" ]; then
             send_wakeup_with_escape 3
-            echo "PHASE2_ESCAPE_NUDGE"
+            echo "PHASE2_SUPPRESSED"
         fi
     '
     [ "$status" -eq 0 ]
-    echo "$output" | grep -q "PHASE2_ESCAPE_NUDGE"
-    # Escape was sent
-    grep -q "send-keys.*Escape" "$MOCK_LOG"
-    # Nudge was also sent
+    echo "$output" | grep -q "PHASE2_SUPPRESSED"
+    # Escape was NOT sent (suppressed for copilot TUI safety)
+    ! grep -q "send-keys.*Escape" "$MOCK_LOG"
+    # Plain nudge was sent as fallback
     grep -q "send-keys.*inbox3" "$MOCK_LOG"
 }
 
@@ -357,10 +357,10 @@ MOCK
     grep -q "send-keys.*/clear" "$MOCK_LOG"
 }
 
-# --- T-ESC-005: /clear cooldown → falls back to Escape+nudge ---
+# --- T-ESC-005: /clear cooldown → falls back to plain nudge (Escape suppressed) ---
 
-@test "T-ESC-005: escalation /clear cooldown — falls back to Escape+nudge (copilot)" {
-    # Escape escalation is suppressed for claude/codex. Test with copilot.
+@test "T-ESC-005: escalation /clear cooldown — copilot falls back to plain nudge (no Escape)" {
+    # All known CLIs suppress Escape; verify cooldown fallback uses plain nudge.
     export MOCK_PANE_CLI="copilot"
     run bash -c '
         source "'"$TEST_HARNESS"'"
@@ -375,7 +375,9 @@ MOCK
     '
     [ "$status" -eq 0 ]
     echo "$output" | grep -q "COOLDOWN_FALLBACK"
-    grep -q "send-keys.*Escape" "$MOCK_LOG"
+    # Escape NOT sent (suppressed for copilot)
+    ! grep -q "send-keys.*Escape" "$MOCK_LOG"
+    # Plain nudge sent as fallback
     grep -q "send-keys.*inbox4" "$MOCK_LOG"
     ! grep -q "send-keys.*/clear" "$MOCK_LOG"
 }
@@ -548,7 +550,7 @@ MOCK
 
     # Copilot handler exists
     grep -q 'copilot --yolo' "$WATCHER_SCRIPT"
-    grep -q 'not supported on copilot' "$WATCHER_SCRIPT"
+    grep -q 'Copilot /model.*sending model switch' "$WATCHER_SCRIPT"
 }
 
 # --- T-CODEX-007: pane cli overrides stale CLI_TYPE in Phase2 ---
@@ -718,18 +720,18 @@ PY
     ! grep -q "send-keys.*/new" "$MOCK_LOG"
 }
 
-# --- T-COPILOT-002: copilot /model → skip ---
+# --- T-COPILOT-002: copilot /model → send via TUI ---
 
-@test "T-COPILOT-002: send_cli_command skips /model for copilot" {
+@test "T-COPILOT-002: send_cli_command sends /model to copilot via TUI" {
     run bash -c '
         source "'"$TEST_HARNESS"'"
         CLI_TYPE="copilot"
-        send_cli_command "/model opus"
+        send_cli_command "/model claude-opus-4.6"
     '
     [ "$status" -eq 0 ]
 
-    ! grep -q "send-keys.*/model" "$MOCK_LOG"
-    echo "$output" | grep -q "not supported on copilot"
+    grep -q "send-keys.*/model claude-opus-4.6" "$MOCK_LOG"
+    grep -q "send-keys.*Enter" "$MOCK_LOG"
 }
 
 # --- T-SHOGUN-001: session_has_client — client attached ---

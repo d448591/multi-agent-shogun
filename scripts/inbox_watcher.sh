@@ -450,17 +450,35 @@ send_cli_command() {
         copilot)
             # Copilot: /clearはCtrl-C+再起動, /model非対応→スキップ
             if [[ "$cmd" == "/clear" ]]; then
+                # Guard: skip duplicate restart if already sent for this batch
+                if [ "${NEW_CONTEXT_SENT:-0}" -eq 1 ]; then
+                    echo "[$(date)] [SKIP] Copilot restart already sent for $AGENT_ID — skipping duplicate clear_command" >&2
+                    return 0
+                fi
                 echo "[$(date)] [SEND-KEYS] Copilot /clear: sending Ctrl-C + restart for $AGENT_ID" >&2
                 timeout 5 tmux send-keys -t "$PANE_TARGET" C-c 2>/dev/null || true
                 sleep 2
-                timeout 5 tmux send-keys -t "$PANE_TARGET" "copilot --yolo" 2>/dev/null || true
+                # Use build_cli_command if available, fallback to copilot --yolo
+                local copilot_restart_cmd="copilot --yolo"
+                if type build_cli_command &>/dev/null; then
+                    copilot_restart_cmd=$(build_cli_command "$AGENT_ID" 2>/dev/null || echo "copilot --yolo")
+                fi
+                timeout 5 tmux send-keys -t "$PANE_TARGET" "$copilot_restart_cmd" 2>/dev/null || true
                 sleep 0.3
                 timeout 5 tmux send-keys -t "$PANE_TARGET" Enter 2>/dev/null || true
-                sleep 3
+                sleep 5
+                # Send startup prompt after restart (Copilot auto-reads copilot-instructions.md
+                # but needs explicit prompt to trigger Session Start procedure)
+                send_copilot_startup_prompt
+                NEW_CONTEXT_SENT=1
                 return 0
             fi
             if [[ "$cmd" == /model* ]]; then
-                echo "[$(date)] Skipping $cmd (not supported on copilot)" >&2
+                echo "[$(date)] [SEND-KEYS] Copilot /model: sending model switch for $AGENT_ID" >&2
+                timeout 5 tmux send-keys -t "$PANE_TARGET" "$cmd" 2>/dev/null || true
+                sleep 0.3
+                timeout 5 tmux send-keys -t "$PANE_TARGET" Enter 2>/dev/null || true
+                sleep 2
                 return 0
             fi
             ;;
@@ -525,6 +543,42 @@ send_codex_startup_prompt() {
     STARTUP_PROMPT_SENT=1
 }
 
+# ─── Send Copilot startup prompt after Ctrl-C + restart ───
+# Waits for agent to become idle (Copilot CLI ready), then sends a startup
+# prompt that triggers the Session Start procedure.
+# Copilot CLI auto-reads .github/copilot-instructions.md which contains
+# Session Start steps, but needs an explicit prompt to trigger execution.
+send_copilot_startup_prompt() {
+    # Poll until agent becomes idle (prompt ready) instead of fixed sleep.
+    # Copilot CLI startup may take longer (TUI initialization).
+    # Max 20s (4 attempts × 5s). If still busy after 20s, proceed anyway.
+    local attempt
+    for attempt in 1 2 3 4; do
+        sleep 5
+        if ! agent_is_busy; then
+            echo "[$(date)] [STARTUP] $AGENT_ID idle after ${attempt}×5s — sending startup prompt (copilot)" >&2
+            break
+        fi
+        echo "[$(date)] [STARTUP] $AGENT_ID still busy after ${attempt}×5s — retrying (copilot)" >&2
+    done
+    if agent_is_busy; then
+        echo "[$(date)] [STARTUP] $AGENT_ID still busy after 20s — proceeding with startup prompt (copilot)" >&2
+    fi
+
+    local startup_prompt=""
+    if type get_startup_prompt &>/dev/null; then
+        startup_prompt=$(get_startup_prompt "$AGENT_ID" 2>/dev/null || true)
+    fi
+    if [[ -z "$startup_prompt" ]]; then
+        startup_prompt="Session Start — do ALL of this in one turn, do NOT stop early: 1) Run: tmux display-message -t \"\$TMUX_PANE\" -p '#{@agent_id}' to identify yourself. 2) Read your instruction file at instructions/generated/copilot-{your_role}.md. 3) Read queue/tasks/${AGENT_ID}.yaml for your current task. 4) Read queue/inbox/${AGENT_ID}.yaml, process unread entries and mark read:true. 5) Execute the assigned task to completion. Keep working until done."
+    fi
+    echo "[$(date)] [STARTUP] Sending startup prompt to $AGENT_ID (copilot): ${startup_prompt:0:80}..." >&2
+    timeout 5 tmux send-keys -t "$PANE_TARGET" "$startup_prompt" 2>/dev/null || true
+    sleep 0.3
+    timeout 5 tmux send-keys -t "$PANE_TARGET" Enter 2>/dev/null || true
+    STARTUP_PROMPT_SENT=1
+}
+
 # ─── Send context reset before new task ───
 # Called when task_assigned is detected in unread messages.
 # Sends the appropriate "new conversation" command per CLI type to clear
@@ -569,7 +623,26 @@ send_context_reset() {
         return 0
     fi
 
-    # Non-Codex CLIs: send /clear and wait for idle
+    # Copilot: Ctrl-C + restart + startup prompt (Copilot has no /clear)
+    if [[ "$effective_cli" == "copilot" ]]; then
+        echo "[$(date)] [CONTEXT-RESET] Copilot: Ctrl-C + restart for $AGENT_ID" >&2
+        timeout 5 tmux send-keys -t "$PANE_TARGET" C-c 2>/dev/null || true
+        sleep 2
+        # Use build_cli_command if available, fallback to copilot --yolo
+        local copilot_reset_cmd="copilot --yolo"
+        if type build_cli_command &>/dev/null; then
+            copilot_reset_cmd=$(build_cli_command "$AGENT_ID" 2>/dev/null || echo "copilot --yolo")
+        fi
+        timeout 5 tmux send-keys -t "$PANE_TARGET" "$copilot_reset_cmd" 2>/dev/null || true
+        sleep 0.3
+        timeout 5 tmux send-keys -t "$PANE_TARGET" Enter 2>/dev/null || true
+        sleep 3
+        # Wait for idle + send startup prompt
+        send_copilot_startup_prompt
+        return 0
+    fi
+
+    # Non-Codex/Non-Copilot CLIs (claude, kimi): send /clear and wait for idle
     # Send the command (text and Enter separated for TUI compatibility)
     timeout 5 tmux send-keys -t "$PANE_TARGET" "$reset_cmd" 2>/dev/null || true
     sleep 0.3
@@ -745,6 +818,14 @@ send_wakeup_with_escape() {
     # Phase 2 の Escape エスカレーションは無効化し、通常 nudge のみに落とす。
     if [[ "$effective_cli" == "codex" ]]; then
         echo "[$(date)] [SKIP] codex: suppressing Escape escalation for $AGENT_ID; sending plain nudge" >&2
+        send_wakeup "$unread_count"
+        return 0
+    fi
+
+    # Copilot CLI: TUI上でのEscapeは「現在の操作を停止/ツール許可拒否」。
+    # Phase 2のEscapeエスカレーションはCopilot TUIの動作を中断させるため無効化。
+    if [[ "$effective_cli" == "copilot" ]]; then
+        echo "[$(date)] [SKIP] copilot: suppressing Escape escalation for $AGENT_ID (TUI safety); sending plain nudge" >&2
         send_wakeup "$unread_count"
         return 0
     fi

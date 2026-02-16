@@ -123,6 +123,47 @@ YAML
 cli:
   default: kimi
 YAML
+
+    # copilot with individual model settings
+    cat > "${TEST_TMP}/settings_copilot_models.yaml" << 'YAML'
+cli:
+  default: copilot
+  agents:
+    shogun:
+      type: copilot
+      model: opus
+    karo:
+      type: copilot
+      model: gpt-5
+    ashigaru1:
+      type: copilot
+      model: claude-sonnet-4.5
+YAML
+
+    # output dir settings (default only)
+    cat > "${TEST_TMP}/settings_output_default.yaml" << 'YAML'
+cli:
+  default: claude
+output:
+  default: "/tmp/test-deliverables"
+YAML
+
+    # output dir settings (project-specific)
+    cat > "${TEST_TMP}/settings_output_project.yaml" << 'YAML'
+cli:
+  default: claude
+output:
+  default: "/tmp/test-deliverables"
+  projects:
+    proj_a: "/tmp/proj-a-output"
+    proj_b: "/mnt/c/work/proj-b"
+YAML
+
+    # output dir settings (no output section)
+    cat > "${TEST_TMP}/settings_output_none.yaml" << 'YAML'
+cli:
+  default: claude
+YAML
 }
 
 teardown() {
@@ -282,10 +323,10 @@ load_adapter_with() {
     [ "$result" = "codex --model sonnet --dangerously-bypass-approvals-and-sandbox --no-alt-screen" ]
 }
 
-@test "build_cli_command: copilot → copilot --yolo" {
+@test "build_cli_command: copilot + default model → copilot --yolo --model claude-sonnet-4.5" {
     load_adapter_with "${TEST_TMP}/settings_mixed.yaml"
     result=$(build_cli_command "ashigaru7")
-    [ "$result" = "copilot --yolo" ]
+    [ "$result" = "copilot --yolo --model claude-sonnet-4.5" ]
 }
 
 @test "build_cli_command: kimi + model → kimi --yolo --model k2.5" {
@@ -298,6 +339,24 @@ load_adapter_with() {
     load_adapter_with "${TEST_TMP}/settings_kimi.yaml"
     result=$(build_cli_command "ashigaru4")
     [ "$result" = "kimi --yolo --model k2.5" ]
+}
+
+@test "build_cli_command: copilot + explicit model → copilot --yolo --model claude-opus-4.6" {
+    load_adapter_with "${TEST_TMP}/settings_copilot_models.yaml"
+    result=$(build_cli_command "shogun")
+    [ "$result" = "copilot --yolo --model claude-opus-4.6" ]
+}
+
+@test "build_cli_command: copilot + gpt-5 model → copilot --yolo --model gpt-5" {
+    load_adapter_with "${TEST_TMP}/settings_copilot_models.yaml"
+    result=$(build_cli_command "karo")
+    [ "$result" = "copilot --yolo --model gpt-5" ]
+}
+
+@test "build_cli_command: copilot + 正式名パススルー → copilot --yolo --model claude-sonnet-4.5" {
+    load_adapter_with "${TEST_TMP}/settings_copilot_models.yaml"
+    result=$(build_cli_command "ashigaru1")
+    [ "$result" = "copilot --yolo --model claude-sonnet-4.5" ]
 }
 
 @test "build_cli_command: cliセクションなし → claude フォールバック" {
@@ -340,10 +399,10 @@ load_adapter_with() {
     [ "$result" = "instructions/codex-ashigaru.md" ]
 }
 
-@test "get_instruction_file: ashigaru7 + copilot → .github/copilot-instructions-ashigaru.md" {
+@test "get_instruction_file: ashigaru7 + copilot → instructions/generated/copilot-ashigaru.md" {
     load_adapter_with "${TEST_TMP}/settings_mixed.yaml"
     result=$(get_instruction_file "ashigaru7")
-    [ "$result" = ".github/copilot-instructions-ashigaru.md" ]
+    [ "$result" = "instructions/generated/copilot-ashigaru.md" ]
 }
 
 @test "get_instruction_file: ashigaru3 + kimi → instructions/generated/kimi-ashigaru.md" {
@@ -367,7 +426,7 @@ load_adapter_with() {
 @test "get_instruction_file: cli_type引数で明示指定 (copilot)" {
     load_adapter_with "${TEST_TMP}/settings_none.yaml"
     result=$(get_instruction_file "karo" "copilot")
-    [ "$result" = ".github/copilot-instructions-karo.md" ]
+    [ "$result" = "instructions/generated/copilot-karo.md" ]
 }
 
 @test "get_instruction_file: 全CLI × 全role組み合わせ" {
@@ -381,9 +440,9 @@ load_adapter_with() {
     [ "$(get_instruction_file karo codex)" = "instructions/codex-karo.md" ]
     [ "$(get_instruction_file ashigaru3 codex)" = "instructions/codex-ashigaru.md" ]
     # copilot
-    [ "$(get_instruction_file shogun copilot)" = ".github/copilot-instructions-shogun.md" ]
-    [ "$(get_instruction_file karo copilot)" = ".github/copilot-instructions-karo.md" ]
-    [ "$(get_instruction_file ashigaru5 copilot)" = ".github/copilot-instructions-ashigaru.md" ]
+    [ "$(get_instruction_file shogun copilot)" = "instructions/generated/copilot-shogun.md" ]
+    [ "$(get_instruction_file karo copilot)" = "instructions/generated/copilot-karo.md" ]
+    [ "$(get_instruction_file ashigaru5 copilot)" = "instructions/generated/copilot-ashigaru.md" ]
     # kimi
     [ "$(get_instruction_file shogun kimi)" = "instructions/generated/kimi-shogun.md" ]
     [ "$(get_instruction_file karo kimi)" = "instructions/generated/kimi-karo.md" ]
@@ -546,4 +605,102 @@ load_adapter_with() {
     load_adapter_with "${TEST_TMP}/settings_kimi_default.yaml"
     result=$(get_agent_model "karo")
     [ "$result" = "k2.5" ]
+}
+
+# =============================================================================
+# get_copilot_model_name テスト
+# =============================================================================
+
+@test "get_copilot_model_name: opus → claude-opus-4.6" {
+    load_adapter_with "${TEST_TMP}/settings_none.yaml"
+    result=$(get_copilot_model_name "opus")
+    [ "$result" = "claude-opus-4.6" ]
+}
+
+@test "get_copilot_model_name: sonnet → claude-sonnet-4.5" {
+    load_adapter_with "${TEST_TMP}/settings_none.yaml"
+    result=$(get_copilot_model_name "sonnet")
+    [ "$result" = "claude-sonnet-4.5" ]
+}
+
+@test "get_copilot_model_name: haiku → claude-haiku-4.5" {
+    load_adapter_with "${TEST_TMP}/settings_none.yaml"
+    result=$(get_copilot_model_name "haiku")
+    [ "$result" = "claude-haiku-4.5" ]
+}
+
+@test "get_copilot_model_name: gpt-5 → gpt-5" {
+    load_adapter_with "${TEST_TMP}/settings_none.yaml"
+    result=$(get_copilot_model_name "gpt-5")
+    [ "$result" = "gpt-5" ]
+}
+
+@test "get_copilot_model_name: gemini → gemini-3-pro-preview" {
+    load_adapter_with "${TEST_TMP}/settings_none.yaml"
+    result=$(get_copilot_model_name "gemini")
+    [ "$result" = "gemini-3-pro-preview" ]
+}
+
+@test "get_copilot_model_name: 正式名パススルー claude-sonnet-4.5" {
+    load_adapter_with "${TEST_TMP}/settings_none.yaml"
+    result=$(get_copilot_model_name "claude-sonnet-4.5")
+    [ "$result" = "claude-sonnet-4.5" ]
+}
+
+@test "get_copilot_model_name: 正式名パススルー gpt-5.2-codex" {
+    load_adapter_with "${TEST_TMP}/settings_none.yaml"
+    result=$(get_copilot_model_name "gpt-5.2-codex")
+    [ "$result" = "gpt-5.2-codex" ]
+}
+
+@test "get_copilot_model_name: 不明な名前 → 空文字" {
+    load_adapter_with "${TEST_TMP}/settings_none.yaml"
+    result=$(get_copilot_model_name "unknown_model")
+    [ "$result" = "" ]
+}
+
+# =============================================================================
+# get_output_dir テスト
+# =============================================================================
+
+@test "get_output_dir: output.default を返す" {
+    load_adapter_with "${TEST_TMP}/settings_output_default.yaml"
+    result=$(get_output_dir)
+    [ "$result" = "/tmp/test-deliverables" ]
+}
+
+@test "get_output_dir: project指定なしで output.default を返す" {
+    load_adapter_with "${TEST_TMP}/settings_output_project.yaml"
+    result=$(get_output_dir)
+    [ "$result" = "/tmp/test-deliverables" ]
+}
+
+@test "get_output_dir: project指定ありで projects.<id> を優先" {
+    load_adapter_with "${TEST_TMP}/settings_output_project.yaml"
+    result=$(get_output_dir "proj_a")
+    [ "$result" = "/tmp/proj-a-output" ]
+}
+
+@test "get_output_dir: project指定あり別プロジェクト" {
+    load_adapter_with "${TEST_TMP}/settings_output_project.yaml"
+    result=$(get_output_dir "proj_b")
+    [ "$result" = "/mnt/c/work/proj-b" ]
+}
+
+@test "get_output_dir: 未知のproject → output.default にフォールバック" {
+    load_adapter_with "${TEST_TMP}/settings_output_project.yaml"
+    result=$(get_output_dir "unknown_proj")
+    [ "$result" = "/tmp/test-deliverables" ]
+}
+
+@test "get_output_dir: output セクションなし → saytask/ にフォールバック" {
+    load_adapter_with "${TEST_TMP}/settings_output_none.yaml"
+    result=$(get_output_dir)
+    [[ "$result" == */saytask ]]
+}
+
+@test "get_output_dir: output セクションなし + project指定 → saytask/ にフォールバック" {
+    load_adapter_with "${TEST_TMP}/settings_output_none.yaml"
+    result=$(get_output_dir "any_project")
+    [[ "$result" == */saytask ]]
 }
