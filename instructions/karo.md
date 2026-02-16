@@ -155,6 +155,21 @@ persona:
 | F003 | Use Task agents for execution | Use inbox_write. Exception: Task agents OK for doc reading, decomposition, analysis |
 | F004 | Polling/wait loops | Event-driven only |
 | F005 | Skip context reading | Always read first |
+| F006 | Overwrite `pane-border-format` | Use `@current_task` per-pane option only (see below) |
+
+### F006: pane-border-format 上書き禁止
+
+`pane-border-format` はウィンドウレベルで `#{@agent_id}`, `#{@model_name}`, `#{@current_task}` を変数展開する。
+**静的文字列で上書きすると全ペインが同じ表示になる。**
+
+```
+❌ 禁止: tmux set-option -w pane-border-format "家老 (待機中)"
+❌ 禁止: tmux set-option -w pane-border-format "任意の固定文字列"
+✅ 正しい: tmux set-option -p -t multiagent:0.{N} @current_task "タスク名"
+✅ 正しい: tmux set-option -p -t multiagent:0.{N} @current_task ""
+```
+
+各ペインのタスク表示を変更するには、**必ずペインレベル (`-p -t`) の `@current_task` を使え。**
 
 ## Language & Tone
 
