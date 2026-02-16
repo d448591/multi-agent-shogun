@@ -179,11 +179,12 @@ MOCK
     grep -q "send-keys -t test:0.0 Enter" "$MOCK_LOG"
 }
 
-# --- T-SW-004: send-keys failure → return 1 ---
+# --- T-SW-004: send-keys failure → return 0 (daemon-safe) + WARNING log ---
+# send_wakeup always returns 0 to avoid killing the watcher under set -euo pipefail.
 
-@test "T-SW-004: send_wakeup returns 1 when send-keys fails" {
+@test "T-SW-004: send_wakeup returns 0 when send-keys fails (daemon-safe)" {
     run bash -c "MOCK_SENDKEYS_RC=1; source '$TEST_HARNESS' && send_wakeup 2"
-    [ "$status" -eq 1 ]
+    [ "$status" -eq 0 ]
 
     echo "$output" | grep -qi "WARNING\|failed"
 }
@@ -533,7 +534,8 @@ MOCK
 
 @test "T-CODEX-006: inbox_watcher.sh contains agent_is_busy and Codex/Copilot handlers" {
     grep -q "agent_is_busy()" "$WATCHER_SCRIPT"
-    grep -q 'Working|Thinking|Planning|Sending' "$WATCHER_SCRIPT"
+    # Busy detection patterns live in lib/agent_status.sh (shared library)
+    grep -q 'Working|Thinking|Planning|Sending' "$PROJECT_ROOT/lib/agent_status.sh"
 
     # Codex /clear → /new conversion exists
     grep -q '/new' "$WATCHER_SCRIPT"
@@ -653,8 +655,8 @@ PY
 
     # codex clear path uses /new
     grep -q "send-keys.*/new" "$MOCK_LOG"
-    # auto-injected unread should trigger inbox1 nudge
-    grep -q "send-keys.*inbox1" "$MOCK_LOG"
+    # After /new, startup prompt is sent (replaces inbox1 nudge for wake-up)
+    grep -q "send-keys.*Session Start" "$MOCK_LOG"
 }
 
 # --- T-CODEX-012: auto-recovery dedupe ---

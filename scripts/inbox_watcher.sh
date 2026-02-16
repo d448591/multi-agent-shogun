@@ -1058,3 +1058,11 @@ while true; do
 done
 
 fi  # end testing guard
+
+# Source shared agent status library outside the testing guard so that
+# agent_is_busy_check() is available in test mode too.
+# In normal mode it was already sourced above; double-sourcing is harmless.
+_agent_status_lib="${SCRIPT_DIR}/lib/agent_status.sh"
+if [ -f "$_agent_status_lib" ] && ! type agent_is_busy_check &>/dev/null; then
+    source "$_agent_status_lib"
+fi
