@@ -43,6 +43,9 @@ setup() {
         "$PROJECT_ROOT/scripts/inbox_write.sh" > "$TEST_SCRIPT_DIR/inbox_write.sh"
     chmod +x "$TEST_SCRIPT_DIR/inbox_write.sh"
 
+    # .venvをプロジェクトルートからシンボリックリンク（inbox_write.shが$SCRIPT_DIR/.venv/bin/python3を参照）
+    ln -sf "$PROJECT_ROOT/.venv" "$TEST_TMPDIR/.venv"
+
     export TEST_INBOX_WRITE="$TEST_SCRIPT_DIR/inbox_write.sh"
 }
 
